@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>iField Auth — 2FA Authenticator</title>
+<style>
+  :root {
+    --bg: #0b0e17;
+    --panel: #161b2e;
+    --card: #1f2642;
+    --accent: #6c8cff;
+    --accent2: #8b5cf6;
+    --text: #e8eaf6;
+    --muted: #9aa3c7;
+    --border: #2f3760;
+    --danger: #f87171;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: radial-gradient(1000px 500px at 50% -10%, #2a2f5e 0%, transparent 60%), var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px 16px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .wrap { max-width: 500px; width: 100%; margin: 0 auto; }
+  
+  header { text-align: center; margin-bottom: 24px; }
+  .brand-box {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .logo-text { font-size: 1.6rem; font-weight: 800; color: var(--text); }
+  .logo-icon {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 10px; display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 0.9rem; box-shadow: 0 4px 15px rgba(108,140,255,.3);
+  }
+  .subtitle { color: var(--muted); font-size: 0.9rem; }
+
+  /* Карточка добавления */
+  .add-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 20px;
+  }
+  .input-group { margin-bottom: 12px; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+  input {
+    width: 100%; background: #0f1324; border: 1px solid var(--border);
+    color: #fff; padding: 10px 12px; border-radius: 8px; outline: none; font-size: 0.95rem;
+  }
+  input:focus { border-color: var(--accent); }
+  .btn-add {
+    width: 100%; padding: 12px; background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border: none; border-radius: 8px; color: #fff; font-weight: 600; cursor: pointer; transition: 0.2s;
+  }
+  .btn-add:hover { filter: brightness(1.1); }
+
+  /* Список 2FA ключей */
+  .auth-list { display: flex; flex-direction: column; gap: 12px; }
+  .auth-item {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 16px; position: relative; overflow: hidden;
+    cursor: pointer; transition: transform 0.2s;
+  }
+  .auth-item:active { transform: scale(0.98); }
+  .auth-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .auth-name { font-weight: 600; font-size: 1rem; color: var(--text); }
+  .auth-code {
+    font-family: 'Consolas', monospace; font-size: 1.8rem; font-weight: 700;
+    letter-spacing: 3px; color: var(--accent); margin-bottom: 6px;
+  }
+  .progress-bar {
+    position: absolute; bottom: 0; left: 0; height: 4px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width 1s linear;
+  }
+
+  .del-btn {
+    background: transparent; border: none; color: var(--danger);
+    font-size: 0.8rem; cursor: pointer; opacity: 0.6;
+  }
+  .del-btn:hover { opacity: 1; }
+
+  /* Footer */
+  footer { text-align: center; margin-top: 30px; font-size: 0.85rem; color: var(--muted); }
+  footer a { color: var(--accent2); text-decoration: none; font-weight: 600; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(100px);
+    background: #252c52; border: 1px solid var(--accent); color: #fff;
+    padding: 10px 20px; border-radius: 999px; font-size: 0.85rem; opacity: 0; transition: 0.3s;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="brand-box">
+      <span class="logo-text">iField Auth</span>
+      <div class="logo-icon">2FA</div>
+    </div>
+    <p class="subtitle">Локальный и безопасный генератор кодов аутентификации</p>
+  </header>
+
+  <div class="add-card">
+    <div class="input-group">
+      <label>Название сервиса (например: GitHub / Google)</label>
+      <input type="text" id="serviceName" placeholder="Название">
+    </div>
+    <div class="input-group">
+      <label>Секретный ключ (Secret Key / Base32)</label>
+      <input type="text" id="secretKey" placeholder="JBSWY3DPEHPK3PXP">
+    </div>
+    <button class="btn-add" id="addBtn">➕ Добавить аккаунт</button>
+  </div>
+
+  <div class="auth-list" id="authList"></div>
+</div>
+
+<footer>
+  <div class="footer-box">
+    <span>iField_lab</span> by <a href="https://github.com/i-field" target="_blank">Kiiashko Roman</a>
+  </div>
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<!-- Подключаем легкую библиотеку для расчета TOTP -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/otpauth/9.1.4/otpauth.umd.min.js"></script>
+
+<script>
+let accounts = JSON.parse(localStorage.getItem('ifield_auth_accounts') || '[]');
+
+function saveAccounts() {
+  localStorage.setItem('ifield_auth_accounts', JSON.stringify(accounts));
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+function addAccount() {
+  const name = document.getElementById('serviceName').value.trim();
+  const secret = document.getElementById('secretKey').value.trim().replace(/\s+/g, '').toUpperCase();
+
+  if (!name || !secret) return alert('Заполните оба поля!');
+
+  try {
+    const totp = new OTPAuth.TOTP({ secret: secret });
+    totp.generate(); // Проверка валидности ключа
+  } catch(e) {
+    return alert('Неверный формат секретного ключа (ожидается Base32)!');
+  }
+
+  accounts.push({ id: Date.now(), name, secret });
+  saveAccounts();
+  
+  document.getElementById('serviceName').value = '';
+  document.getElementById('secretKey').value = '';
+  
+  render();
+  showToast('Аккаунт успешно добавлен!');
+}
+
+function deleteAccount(id, e) {
+  e.stopPropagation();
+  if (confirm('Удалить этот ключ?')) {
+    accounts = accounts.filter(a => a.id !== id);
+    saveAccounts();
+    render();
+  }
+}
+
+function copyCode(code) {
+  navigator.clipboard.writeText(code);
+  showToast('Код скопирован!');
+}
+
+function render() {
+  const container = document.getElementById('authList');
+  container.innerHTML = '';
+
+  const seconds = 30 - (Math.floor(Date.now() / 1000) % 30);
+  const progressPercent = (seconds / 30) * 100;
+
+  accounts.forEach(acc => {
+    let code = '======';
+    try {
+      const totp = new OTPAuth.TOTP({ secret: acc.secret });
+      code = totp.generate();
+    } catch(e) {}
+
+    const formattedCode = code.slice(0, 3) + ' ' + code.slice(3);
+
+    const item = document.createElement('div');
+    item.className = 'auth-item';
+    item.onclick = () => copyCode(code);
+    item.innerHTML = `
+      <div class="auth-header">
+        <span class="auth-name">${escapeHtml(acc.name)}</span>
+        <button class="del-btn" onclick="deleteAccount(${acc.id}, event)">🗑</button>
+      </div>
+      <div class="auth-code">${formattedCode}</div>
+      <div class="progress-bar" style="width: ${progressPercent}%"></div>
+    `;
+    container.appendChild(item);
+  });
+}
+
+function escapeHtml(str) {
+  return str.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[m]);
+}
+
+document.getElementById('addBtn').addEventListener('click', addAccount);
+
+// Обновление кодов и таймера каждую секунду
+setInterval(render, 1000);
+render();
+</script>
+</body>
+</html>
